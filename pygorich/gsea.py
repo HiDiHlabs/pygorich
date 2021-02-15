@@ -106,7 +106,8 @@ class Enricher():
                                                    "p.HYPERGEOMETRIC",
                                                    "q.HYPERGEOMETRIC",
                                                    "p.BINOMIAL",
-                                                   "q.BINOMIAL"])
+                                                   "q.BINOMIAL",
+                                                   "REGION.GENES.PAIRS"])
 
     ################
     # Public Methods
@@ -190,7 +191,8 @@ class Enricher():
                                                    "p.HYPERGEOMETRIC",
                                                    "q.HYPERGEOMETRIC",
                                                    "p.BINOMIAL",
-                                                   "q.BINOMIAL"])
+                                                   "q.BINOMIAL",
+                                                   "REGION.GENES.PAIRS"])
 
 
     # Data load Methods
@@ -348,6 +350,8 @@ class Enricher():
                         c += 1
                         continue
                     split_line = line.rstrip().split("\t")
+                    if(len(split_line) < 3):
+                        continue
                     lib_id = split_line[0]
                     if(not(lib_id == library_id)):
                         continue
@@ -373,6 +377,7 @@ class Enricher():
         geneset_list_foreground_regions = [ set(geneset.split(";")) for
                                         geneset in 
                                         self.__annotated_foreground["GENESET"]]
+        foreground_region_ids = list(self.__annotated_foreground.index)
         geneset_list_background_regions = [ set(geneset.split(";")) for
                                         geneset in 
                                         self.__annotated_background["GENESET"]]
@@ -386,14 +391,18 @@ class Enricher():
                                           library_id].loc[:, "GENESET.ID"]:
                 if(not library_id+"@"+geneset_id in 
                     set(self.__enrichment_results.index)):
+#                    print("\t"+geneset_id)
                     geneset = set(self.__genesets.loc[library_id+
                                                       "@"+
                                                       geneset_id,
                                                       "GENE.LIST"].split(";"))
-                    n_foreground_in_geneset = self.__calculateGenesetOverlaps(
+                    (n_foreground_in_geneset, 
+                     foreground_region_genes_pairs) = self.__calculateGenesetOverlaps(
                                             geneset_list_foreground_regions,
-                                            geneset)
-                    n_background_in_geneset = self.__calculateGenesetOverlaps(
+                                            geneset,
+                                            region_id_list = foreground_region_ids)
+                    (n_background_in_geneset,
+                     background_region_genes_pairs) = self.__calculateGenesetOverlaps(
                                             geneset_list_background_regions,
                                             geneset)
 
@@ -401,7 +410,7 @@ class Enricher():
                     odds_fisher = None
                     p_val_hyper = None
                     p_val_binom = None
-                    if(method == "fisher"):
+                    if(method == "fisher" or method == "all"):
                         n_foreground_not_in_geneset = (n_foreground-
                                                        n_foreground_in_geneset)
                         n_background_not_in_geneset = (n_background-
@@ -412,13 +421,15 @@ class Enricher():
                                 n_background_not_in_geneset] ]
                         odds_fisher, p_val_fisher = fisher_exact(ct, 
                                                     alternative = "greater")
-                    elif(method == "hypergeometric"):
+                    if(method == "hypergeometric" or method == "all"):
                         M = n_background
                         n = n_background_in_geneset
                         N = n_foreground
                         k = n_foreground_in_geneset
-                        p_val_hyper = 1.-hypergeom.cdf(k, M, n, N)
-                    elif(method == "binomial"):
+                        p_val_hyper = 1.
+                        if(n > 0 and k > 0):
+                            p_val_hyper = 1.-hypergeom.cdf(k, M, n, N)
+                    if(method == "binomial" or method == "all"):
                         p = float(n_background_in_geneset)/float(n_background)
                         x = n_foreground_in_geneset
                         n = n_foreground
@@ -426,34 +437,7 @@ class Enricher():
                                              n = n, 
                                              p = p, 
                                              alternative="greater")
-                    elif(method == "all"):
-                        # Fisher's Exact
-                        n_foreground_not_in_geneset = (n_foreground-
-                                                       n_foreground_in_geneset)
-                        n_background_not_in_geneset = (n_background-
-                                                       n_background_in_geneset)
-                        ct = [ [n_foreground_in_geneset,
-                                n_foreground_not_in_geneset], 
-                               [n_background_in_geneset,
-                                n_background_not_in_geneset] ]
-                        odds_fisher, p_val_fisher = fisher_exact(ct, 
-                                                    alternative = "greater")
 
-                        # Hypergeometric
-                        M = n_background
-                        n = n_background_in_geneset
-                        N = n_foreground
-                        k = n_foreground_in_geneset
-                        p_val_hyper = 1.-hypergeom.cdf(k, M, n, N)
-
-                        # Binomial
-                        p = float(n_background_in_geneset)/float(n_background)
-                        x = n_foreground_in_geneset
-                        n = n_foreground
-                        p_val_binom = binom_test(x, 
-                                             n = n, 
-                                             p = p, 
-                                             alternative="greater")
                 results = [library_id,
                            geneset_id,
                            n_foreground,
@@ -466,7 +450,8 @@ class Enricher():
                            p_val_hyper,
                            None,
                            p_val_binom,
-                           None]
+                           None,
+                           ";".join(foreground_region_genes_pairs)]
                 self.__enrichment_results.loc[
                     library_id+"@"+geneset_id, :] = results
 
@@ -505,7 +490,8 @@ class Enricher():
 
     def __calculateGenesetOverlaps(self,
                                    region_associated_geneset_list,
-                                   geneset):
+                                   geneset,
+                                   region_id_list = None):
         '''Calculate number of regions in geneset
         Parameters
         ----------
@@ -520,8 +506,17 @@ class Enricher():
             Number of regions in geneset
         '''
         overlaps = 0
+        i = 0
+        region_genes_pairs = []
         for region_associated_geneset in region_associated_geneset_list:
-            if(len(region_associated_geneset & geneset) > 0):
+            overlap_genes = list(region_associated_geneset & geneset)
+            if(len(overlap_genes) > 0):
                 overlaps += 1
-        return overlaps
+                if(not region_id_list is None):
+                    region_id = region_id_list[i]
+                    region_genes_pairs += [region_id+
+                                           "="+
+                                           ",".join(overlap_genes)]
+            i += 1
+        return overlaps, region_genes_pairs
 
