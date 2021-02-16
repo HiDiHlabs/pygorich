@@ -4,8 +4,7 @@ import pandas as pnd
 from scipy.stats import hypergeom, fisher_exact, binom_test
 from statsmodels.stats.multitest import multipletests
 import sys
-sys.path += ["/home/biegm/projects/python_packages"]
-import pyanno
+import geanno
 
 class Enricher():
     '''
@@ -265,7 +264,7 @@ class Enricher():
         '''
         # Load and annotated foreground regions
         # Create a new GenomicRegionAnnotator instance
-        gra = pyanno.Annotator.GenomicRegionAnnotator()
+        gra = geanno.Annotator.GenomicRegionAnnotator()
 
         # load base
         gra.load_base_from_file(foreground_bed_filename)
@@ -287,7 +286,7 @@ class Enricher():
 
         # Load and annotated background regions
         # Create a new GenomicRegionAnnotator instance
-        gra = pyanno.Annotator.GenomicRegionAnnotator()
+        gra = geanno.Annotator.GenomicRegionAnnotator()
 
         # load base
         gra.load_base_from_file(background_bed_filename)
